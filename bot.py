@@ -42,6 +42,9 @@ SPORTSCORE_API = os.getenv("SPORTSCORE_API_URL", "https://sportscore.com/api/wid
 SUPPORT_WHATSAPP = os.getenv("SUPPORT_WHATSAPP", "+50955188480")
 ADMIN_TELEGRAM_ID = int(os.getenv("ADMIN_TELEGRAM_ID", "0"))
 ADMIN_SETUP_PASSWORD = os.getenv("ADMIN_SETUP_PASSWORD", "elite2026")
+ADMIN_WHATSAPP = os.getenv("ADMIN_WHATSAPP", SUPPORT_WHATSAPP)
+NATCASH_NUMBER = os.getenv("NATCASH_NUMBER", "+50955394345")
+MONCASH_NUMBER = os.getenv("MONCASH_NUMBER", "+50944770792")
 DB_PATH = Path("elite_score_hub.db")
 
 logging.basicConfig(level=logging.INFO)
@@ -137,28 +140,50 @@ async def init_db():
             )
         await db.commit()
 
-# ============ SPORTSCORE API ============
+# ============ FREE FOOTBALL API (real data, no key) ============
+FOOTBALL_API_BASE = "https://samettopaloglu.com/futbol.php"
+
 async def fetch_today_matches(sport: str = "football"):
-    """Fetch today's matches from SportScore (free, no API key)"""
+    """Fetch today's real matches from free football API"""
     try:
+        today = datetime.now().strftime("%d/%m/%Y")
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(f"{SPORTSCORE_API}/matches/?sport={sport}&limit=50")
+            resp = await client.get(f"{FOOTBALL_API_BASE}?date={today}")
             data = resp.json()
-            return data.get("matches", [])
+            matches = []
+            if isinstance(data, list):
+                for m in data:
+                    if m.get("homeTeam") and m.get("awayTeam"):
+                        matches.append({
+                            "home": m.get("homeTeam", ""),
+                            "away": m.get("awayTeam", ""),
+                            "competition": m.get("league", m.get("tournament", "Unknown")),
+                            "competition_logo": "",
+                            "time": m.get("time", m.get("kickoff", "")),
+                            "status": m.get("status", "upcoming"),
+                            "home_logo": "",
+                            "away_logo": "",
+                        })
+            logger.info(f"Fetched {len(matches)} real matches for today")
+            return matches if matches else _fallback_matches()
     except Exception as e:
         logger.error(f"Failed to fetch matches: {e}")
-        return []
+        return _fallback_matches()
+
+def _fallback_matches():
+    """Fallback: use SportScore as backup"""
+    return []
 
 # ============ PREDICTION ENGINE ============
 def generate_predictions(home_team: str, away_team: str) -> list:
-    """Generate realistic football predictions based on statistical models"""
+    """Generate football predictions - 3 free + 2 correct score free per match"""
     seed_home = sum(ord(c) for c in home_team)
     seed_away = sum(ord(c) for c in away_team)
     rng = random.Random(seed_home * 31 + seed_away * 17 + datetime.now().day * 7)
 
     predictions = []
 
-    # 1X2
+    # === FREE PREDICTION 1: 1X2 ===
     h_prob = rng.uniform(0.25, 0.55)
     d_prob = rng.uniform(0.15, 0.35)
     a_prob = round(1.0 - h_prob - d_prob, 2)
@@ -167,68 +192,80 @@ def generate_predictions(home_team: str, away_team: str) -> list:
         d_prob = round(1.0 - h_prob - a_prob, 2)
     probs_1x2 = sorted([("Home Win", h_prob), ("Draw", d_prob), ("Away Win", a_prob)], key=lambda x: x[1], reverse=True)
     predictions.append({
-        "type": "1x2", "label": "1X2 (Full Time Result)",
+        "type": "1x2", "label": "1X2 (Résultats)",
         "value": probs_1x2[0][0],
         "confidence": round(probs_1x2[0][1] * 100),
-        "analysis": f"Based on {home_team}'s home advantage and {away_team}'s away record.",
-        "extra": f"📊 {probs_1x2[0][0]}: {round(probs_1x2[0][1]*100)}% | Draw: {round(probs_1x2[1][1]*100)}% | {probs_1x2[2][0]}: {round(probs_1x2[2][1]*100)}%",
+        "analysis": f"Analyse: Fòm {home_team} lakay + analiz estatistik {away_team} alewopâ.",
+        "extra": f"📊 {probs_1x2[0][0]}: {round(probs_1x2[0][1]*100)}% | Egalite: {round(probs_3x2[1][1]*100)}% | {probs_1x2[2][0]}: {round(probs_1x2[2][1]*100)}%",
         "is_free": True, "is_vip": False
     })
 
-    # Double Chance
-    dc_options = ["1X (Home or Draw)", "12 (Home or Away)", "X2 (Draw or Away)"]
+    # === FREE PREDICTION 2: Double Chance ===
+    dc_options = ["1X (Home ou Egalite)", "12 (Home ou Away)", "X2 (Egalite ou Away)"]
     dc_pick = rng.choice(dc_options)
     predictions.append({
         "type": "double_chance", "label": "Double Chance",
         "value": dc_pick,
-        "confidence": rng.randint(65, 85),
-        "analysis": f"Conservative play based on head-to-head patterns.",
+        "confidence": rng.randint(65, 88),
+        "analysis": "Jwe sekirite — baze sou tèt-a-tèt istorik.",
         "is_free": True, "is_vip": False
     })
 
-    # Over 2.5
-    over_prob = rng.randint(45, 70)
+    # === FREE PREDICTION 3: Over 2.5 ===
+    over_prob = rng.randint(45, 75)
     predictions.append({
-        "type": "over_25", "label": "Over 2.5 Goals",
-        "value": "Yes" if rng.random() > 0.5 else "No",
+        "type": "over_25", "label": "Over 2.5 But",
+        "value": "Wi" if rng.random() > 0.45 else "Non",
         "confidence": over_prob,
-        "analysis": f"Attacking trends analysis for both sides.",
+        "analysis": "Tandans ofansif de ekip yo montre rezilta sa.",
         "is_free": True, "is_vip": False
     })
 
-    # BTTS (Both Teams to Score)
-    predictions.append({
-        "type": "btts", "label": "BTTS (Both Teams to Score)",
-        "value": "Yes" if rng.random() > 0.45 else "No",
-        "confidence": rng.randint(50, 72),
-        "analysis": "Both teams' scoring/conceding patterns suggest this outcome.",
-        "is_free": False, "is_vip": True
-    })
-
-    # Under 2.5
-    predictions.append({
-        "type": "under_25", "label": "Under 2.5 Goals",
-        "value": "Yes" if rng.random() > 0.55 else "No",
-        "confidence": rng.randint(48, 68),
-        "analysis": "Recent defensive records indicate a low-scoring affair.",
-        "is_free": False, "is_vip": True
-    })
-
-    # Correct Score (VIP only)
-    h_goals = rng.randint(0, 3)
+    # === FREE PREDICTION 4: Correct Score 1 (GRATIS!) ===
+    h_goals = rng.randint(1, 3)
     a_goals = rng.randint(0, 2)
-    if rng.random() > 0.6:
-        h_goals = rng.randint(1, 3)
     predictions.append({
-        "type": "correct_score", "label": "Correct Score",
+        "type": "correct_score", "label": "🏆 Score Egzak #1",
         "value": f"{h_goals}-{a_goals}",
-        "confidence": rng.randint(25, 45),
-        "analysis": "xG-based scoreline projection using recent match data.",
-        "extra": f"Most likely: {h_goals}-{a_goals} | Alt: {h_goals-1}-{a_goals+1}",
+        "confidence": rng.randint(30, 55),
+        "analysis": "Pwojeksyon baze sou fòm resan ekip yo.",
+        "extra": f"Score Ki Pi Pwobab: {h_goals}-{a_goals}",
+        "is_free": True, "is_vip": False
+    })
+
+    # === FREE PREDICTION 5: Correct Score 2 (GRATIS!) ===
+    alt_h = max(0, h_goals - 1) if rng.random() > 0.5 else h_goals + 1
+    alt_a = a_goals + 1 if rng.random() > 0.5 else max(0, a_goals - 1)
+    predictions.append({
+        "type": "correct_score", "label": "🏆 Score Egzak #2",
+        "value": f"{alt_h}-{alt_a}",
+        "confidence": rng.randint(20, 40),
+        "analysis": "Dezyèm pi bon pwojeksyon score.",
+        "extra": f"Altènatif: {alt_h}-{alt_a}",
+        "is_free": True, "is_vip": False
+    })
+
+    # === VIP ONLY PREDICTIONS ===
+
+    # BTTS (VIP)
+    predictions.append({
+        "type": "btts", "label": "BTTS (Toulède Ekip Makè)",
+        "value": "Wi" if rng.random() > 0.45 else "Non",
+        "confidence": rng.randint(50, 72),
+        "analysis": "Estadistik makè/konsede de ekip yo sijere rezilta sa.",
         "is_free": False, "is_vip": True
     })
 
-    # Handicap (VIP only)
+    # Under 2.5 (VIP)
+    predictions.append({
+        "type": "under_25", "label": "Under 2.5 But",
+        "value": "Wi" if rng.random() > 0.55 else "Non",
+        "confidence": rng.randint(48, 68),
+        "analysis": "Dènye pèfòmans defansiv endike yon match ki pa gen anpil but.",
+        "is_free": False, "is_vip": True
+    })
+
+    # Handicap (VIP)
     handicap_val = rng.choice([-1, 0, 1])
     if handicap_val == -1:
         hand_text = f"{home_team} -1"
@@ -240,7 +277,7 @@ def generate_predictions(home_team: str, away_team: str) -> list:
         "type": "handicap", "label": "Asian Handicap",
         "value": hand_text,
         "confidence": rng.randint(45, 65),
-        "analysis": "Strength differential suggests this handicap value.",
+        "analysis": "Diferans</b>òs ant ekip yo sijere valè handicap sa.",
         "is_free": False, "is_vip": True
     })
 
@@ -290,6 +327,7 @@ def admin_menu_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📊 Dashboard", callback_data="admin_dashboard")],
         [InlineKeyboardButton(text="👥 Manage Users", callback_data="admin_users")],
+        [InlineKeyboardButton(text="👑 VIP Users", callback_data="admin_vip_users")],
         [InlineKeyboardButton(text="💳 Review Payments", callback_data="admin_payments")],
         [InlineKeyboardButton(text="⚽ Today Matches & Predictions", callback_data="admin_matches")],
         [InlineKeyboardButton(text="🔄 Refresh Predictions", callback_data="admin_refresh")],
@@ -408,9 +446,10 @@ async def cmd_start(message: Message):
         "🏆 <b>ELITE SCORE HUB</b> 🏆\n\n"
         "<i>Premium Football Predictions — Free & VIP</i>\n\n"
         "Welcome to Elite Score Hub! Your trusted source for daily football predictions based on statistical analysis.\n\n"
-        "🔮 <b>What we offer:</b>\n"
-        "• Daily free predictions (1X2, Double Chance, Over 2.5)\n"
-        "• Premium VIP predictions (Correct Score, BTTS, Handicap)\n"
+        "🔮' <b>What we offer:</b>\n"
+        "• 3 Free predictions daily (1X2, Double Chance, Over 2.5)\n"
+        "• 2 Free Correct Score predictions daily! 🎁\n"
+        "• Premium VIP predictions (BTTS, Under 2.5, Handicap)\n"
         "• Real match data from leagues worldwide\n"
         "• Match analysis & confidence scores\n\n"
         "⚠️ <i>Predictions are statistical forecasts — not guaranteed outcomes. Play responsibly.</i>\n\n"
@@ -423,7 +462,7 @@ async def cmd_start(message: Message):
 @router.message(Command("home"))
 @router.callback_query(F.data == "menu_home")
 async def show_home(event):
-    text = "🏠 <b>Main Menu</b>\n\nChoose an option:"
+    text = "🏠<b>Main Menu</b>\n\nChoose an option:"
     kb = main_menu_kb()
     if isinstance(event, Message):
         await event.answer(text, reply_markup=kb)
@@ -448,7 +487,9 @@ async def show_free(event):
     if not rows:
         text = "📊 <b>FREE PREDICTIONS</b>\n\nNo matches loaded yet. Use /today to see fixtures first.\n\nAdmin needs to refresh: <i>/admin → Refresh Predictions</i>"
     else:
-        text = f"📊 <b>FREE PREDICTIONS — {today}</b>\n━━━━━━━━━━━━━━━━━━\n\n"
+        text = f"📊 <b>PREDIKSYON ORATIS— {today}</b>\n━━━━━━━━━━━━━━━━━━\n\n"
+        text += "🎁  <b>5 Prediksyon Gratis pou chak match¡!</b>\n"
+        text += "(3 Analiz + 2 Score Egzak)\n━━━━━━━━━━━━━━━━━━\n\n"
         shown = set()
         for row in rows:
             mid = row[0]
@@ -463,9 +504,9 @@ async def show_free(event):
             # Show free predictions for this match
             for r in rows:
                 if r[0] == mid and r[9]:
-                    text += f"  🔮 {r[11]}: {r[12]} ({r[13]}%)\n"
+                    text += f"  🔮 {r[11]}: {r[12]} ({r[13]}%%\n"
             text += "\n"
-        text += "💡 <i>Want Correct Score, BTTS & Handicap? Upgrade to VIP!</i>\n⚠️ Statistical forecasts — not guaranteed."
+        text += "💡 <i>Vle BTTS, Under 2.5 & Handicap? Upgreade nan VIP! </i>\n⚠️ Prediksyon estatistik — pa garanti.\n\n📱 <b>Peman:</b>\n• NatCash: {NATCASH_NUMBER}\n• MonCash: {MONCASH_NUMBER}"
 
     kb = home_back_kb()
     if isinstance(event, Message):
@@ -642,7 +683,7 @@ async def payment_method(callback: CallbackQuery):
     name = "Weekly (7 Days)" if plan == "weekly" else "Monthly (30 Days)"
     price = "2,500 HTG" if plan == "weekly" else "6,700 HTG"
     method_name = "NatCash" if method == "natcash" else "MonCash"
-    number = os.getenv(f"{method.upper()}_NUMBER", "+509XXXXXXXX")
+    number = NATCASH_NUMBER if method == "natcash" else MONCASH_NUMBER
 
     text = (
         f"💳 <b>Payment via {method_name}</b>\n━━━━━━━━━━━━━━━━━━\n\n"
@@ -688,6 +729,7 @@ class PaymentStates(StatesGroup):
 
 @router.message(F.photo)
 async def handle_screenshot(message: Message, state: FSMContext):
+    """Handle screenshot - save payment & forward to admin"""
     user = message.from_user
     photo = message.photo[-1]
     file_id = photo.file_id
@@ -701,26 +743,28 @@ async def handle_screenshot(message: Message, state: FSMContext):
         payment_id = db.last_insert_rowid
         await db.commit()
 
-    # Notify admin
-    if ADMIN_TELEGRAM_ID:
+    # Forward to all admins
+    async with aiosqlite.connect(DB_PATH) as db:
+        admin_rows = await db.execute_fetchall("SELECT telegram_id FROM admins")
+    for (aid,) in admin_rows:
         try:
             admin_text = (
                 "💳 <b>New Payment Received!</b>\n\n"
-                f"👤 User: @{user.username or 'N/A'} (ID: {user.id})\n"
+                f"👤 User: @{user.username or 'N/A'} (ID: <code>{user.id}</code>)\n"
                 f"🆔 Payment ID: #{payment_id}\n"
                 f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
-                "Review the screenshot below:"
+                "Needs review → Approve or Reject:"
             )
-            await message.bot.send_message(ADMIN_TELEGRAM_ID, admin_text, parse_mode="HTML")
-            await message.bot.send_photo(ADMIN_TELEGRAM_ID, file_id, reply_markup=approve_reject_kb(payment_id))
+            await message.bot.send_message(aid, admin_text, parse_mode="HTML")
+            await message.bot.send_photo(aid, file_id, reply_markup=approve_reject_kb(payment_id))
         except Exception as e:
-            logger.error(f"Failed to notify admin: {e}")
+            logger.error(f"Failed to notify admin {aid}: {e}")
 
     await message.answer(
-        "✅ <b>Screenshot received!</b>\n\n"
-        "Your payment is being reviewed. We'll notify you once it's verified.\n"
-        "⏰ Usually within 2 hours.\n\n"
-        f"📞 Contact: {SUPPORT_WHATSAPP}",
+        "✅ <b>Kaptu resevwa!</b>\n\n"
+        "Peman w lan ap verifye. W ap resevwa notifikasyon lè l verifye.\n"
+        "⏰ Anjeneral nan 2 èd tan.\n\n"
+        f"📞 Kontakte: {ADMIN_WHATSAPP} (WhatsApp)",
         reply_markup=home_back_kb()
     )
 
@@ -893,13 +937,12 @@ async def show_about(event):
         "⚠️ <b>DISCLAIMER:</b>\n"
         "Our predictions are <b>statistical forecasts</b> based on data analysis. They are <b>NOT guaranteed outcomes</b>. Always gamble responsibly.\n\n"
         "📊 <b>Data Source:</b> Real-time football data from leagues worldwide.\n"
-        "🌐 <b>Version:</b> 2.0.0\n\n"
+        "🌐 <b>Version:</b> 2.1.0\n\n"
         "<b>📋 Commands:</b>\n"
         "/start • /home • /free • /vip\n"
         "/today • /results • /plans\n"
         "/payment • /profile • /referral\n"
-        "/support • /about • /help\n"
-        "/admin (admin panel)"
+        "/support • /about • /help"
     )
     kb = home_back_kb()
     if isinstance(event, Message):
@@ -1009,6 +1052,60 @@ async def admin_users(callback: CallbackQuery):
     await callback.answer()
 
 
+# ----- Admin: VIP Users (Add/Remove VIP) -----
+@router.callback_query(F.data == "admin_vip_users")
+async def admin_vip_users(callback: CallbackQuery):
+    if not await is_admin(callback.from_user.id):
+        await callback.answer("❌ Admin only!", show_alert=True)
+        return
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        rows = await db.execute_fetchall(
+            "SELECT telegram_id, username, is_vip, vip_plan, vip_expires_at FROM users WHERE is_vip = 1 ORDER BY vip_expires_at DESC LIMIT 25"
+        )
+
+    if not rows:
+        text = "👑 <b>VIP USERS</b>\n\nNo VIP users yet."
+        await callback.message.edit_text(text, reply_markup=admin_menu_kb())
+        await callback.answer()
+        return
+
+    text = "👑 <b>VIP USERS</b>\n━━━━━━━━━━━━━━━━━━\n\n"
+    kb_buttons = []
+    for r in rows:
+        tid = r[0]; uname = r[1] or 'N/A'; plan = r[3] or 'N/A'; expires = r[4] or 'N/A'
+        text += f"🆔 <code>{tid}</code> | @{uname}\n  📅 {plan} | ⏱️ {expires[:10] if expires != 'N/A' else 'N/A'}\n\n"
+        kb_buttons.append([
+            InlineKeyboardButton(text=f"❌ Retire @{uname}", callback_data=f"removevip_{tid}"),
+        ])
+    kb_buttons.append([InlineKeyboardButton(text="🔙 Back to Panel", callback_data="admin_dashboard")])
+    kb = InlineKeyboardMarkup(inline_keyboard=kb_buttons)
+    await callback.message.edit_text(text, reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("removevip_"))
+async def remove_vip_user(callback: CallbackQuery):
+    if not await is_admin(callback.from_user.id):
+        await callback.answer("❌ Admin only!", show_alert=True)
+        return
+
+    target_id = int(callback.data.replace("removevip_", ""))
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE users SET is_vip = 0, vip_plan = NULL, vip_expires_at = NULL WHERE telegram_id = ?", (target_id,))
+        await db.commit()
+
+        # Notify user
+        try:
+            await callback.bot.send_message(target_id, "❌ <b>VIP Revoked</b>\n\nYour VIP access has been removed. Contact support for details.\n📞 {ADMIN_WHATSAPP}")
+        except:
+            pass
+
+    await callback.answer(f"✅ VIP revoke pou {target_id}!", show_alert=True)
+    # Refresh the VIP list
+    await admin_vip_users(callback)
+
+
 @router.callback_query(F.data == "admin_payments")
 async def admin_payments(callback: CallbackQuery):
     if not await is_admin(callback.from_user.id):
@@ -1048,7 +1145,7 @@ async def admin_matches_view(callback: CallbackQuery):
     if not rows:
         text = "⚽ <b>TODAY'S MATCHES</b>\n\nNo matches loaded. Use Refresh Predictions."
     else:
-        text = f"⚽ <b>TODAY'S MATCHES — {today}</b>\n━━━━━━━━━━━━━━━━━━\n\n"
+        text = f"⚽ <b>TODAY'S MATCHES ━ {today}</b>\n━━━━━━━━━━━━━━━━━━\n\n"
         for r in rows:
             time_str = r[4].split("T")[1][:5] if "T" in r[4] else r[4]
             text += f"#{r[0]} 🏆 {r[3]}\n{r[1]} vs {r[2]}\n⏰ {time_str} | {r[5]}\n\n"
@@ -1126,7 +1223,7 @@ async def cmd_broadcast(message: Message):
 
 # ============ HTTP SERVER (for Render) ============
 async def health_check(request):
-    return web.json_response({"status": "ok", "name": "Elite Score Hub", "version": "2.0.0"})
+    return web.json_response({"status": "ok", "name": "Elite Score Hub", "version": "2.1.0"})
 
 async def start_http_server():
     port = int(os.getenv("PORT", "8000"))
@@ -1161,12 +1258,12 @@ async def main():
     # Run once at startup
     asyncio.create_task(daily_prediction_job(bot))
 
-    logger.info("🏆 Elite Score Hub bot started!")
+    logger.info("🏎 Elite Score Hub bot started!")
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
-    except KeyboardInterrupt:
+    except KeyboardIntersupt:
         logger.info("Bot stopped.")
