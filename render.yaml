@@ -24,6 +24,8 @@ services:
         value: "+509XXXXXXXX"
       - key: ADMIN_TELEGRAM_ID
         value: "0"
+      - key: ADMIN_SETUP_PASSWORD
+        value: elite2026
       - key: APP_NAME
         value: Elite Score Hub
       - key: DEBUG

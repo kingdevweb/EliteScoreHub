@@ -41,6 +41,7 @@ BOT_USERNAME = os.getenv("BOT_USERNAME", "EliteScoreHubBot")
 SPORTSCORE_API = os.getenv("SPORTSCORE_API_URL", "https://sportscore.com/api/widget")
 SUPPORT_WHATSAPP = os.getenv("SUPPORT_WHATSAPP", "+50955188480")
 ADMIN_TELEGRAM_ID = int(os.getenv("ADMIN_TELEGRAM_ID", "0"))
+ADMIN_SETUP_PASSWORD = os.getenv("ADMIN_SETUP_PASSWORD", "elite2026")
 DB_PATH = Path("elite_score_hub.db")
 
 logging.basicConfig(level=logging.INFO)
@@ -908,11 +909,51 @@ async def show_about(event):
         await event.answer()
 
 
+# ============ SETUP ADMIN (no ID needed!) ============
+@router.message(Command("setadmin"))
+async def cmd_setadmin(message: Message):
+    """Set yourself as admin using the secret password. No Telegram ID needed!"""
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer("⚠️ Usage: <code>/setadmin &lt;password&gt;</code>")
+        return
+
+    password = args[1].strip()
+    user = message.from_user
+
+    # Check if already admin
+    if await is_admin(user.id):
+        await message.answer("✅ You are already an admin!\nUse /admin to access the panel.")
+        return
+
+    # Check password
+    if password == ADMIN_SETUP_PASSWORD:
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "INSERT OR IGNORE INTO admins (telegram_id, username, role) VALUES (?, ?, 'superadmin')",
+                (user.id, user.username)
+            )
+            await db.commit()
+        await message.answer(
+            "✅ <b>You are now an Admin!</b> 🎉\n\n"
+            "Use /admin to open the admin panel.\n\n"
+            f"🆔 Your ID: <code>{user.id}</code>\n"
+            f"👤 @{user.username or 'N/A'}"
+        )
+        logger.info(f"New admin added: {user.id} (@{user.username})")
+    else:
+        await message.answer("❌ <b>Wrong password!</b>\nAccess denied.")
+
+
 # ============ ADMIN PANEL (inside Telegram) ============
 @router.message(Command("admin"))
 async def cmd_admin(message: Message):
     if not await is_admin(message.from_user.id):
-        await message.answer("❌ <b>Access Denied</b>\nAdmin only area.")
+        await message.answer(
+            "❌ <b>Access Denied</b>\nAdmin only area.\n\n"
+            "To become admin, use:\n"
+            "<code>/setadmin &lt;password&gt;</code>"
+        )
         return
 
     await message.answer(
