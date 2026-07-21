@@ -1,0 +1,30 @@
+# Render Blueprint - Elite Score Hub
+# Deploy as Web Service (includes health check server)
+
+services:
+  - type: web
+    name: elite-score-hub
+    env: python
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    plan: free
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: BOT_USERNAME
+        value: EliteScoreHubBot
+      - key: SPORTSCORE_API_URL
+        value: https://sportscore.com/api/widget
+      - key: SUPPORT_WHATSAPP
+        value: "+50955188480"
+      - key: NATCASH_NUMBER
+        value: "+509XXXXXXXX"
+      - key: MONCASH_NUMBER
+        value: "+509XXXXXXXX"
+      - key: ADMIN_TELEGRAM_ID
+        value: "0"
+      - key: APP_NAME
+        value: Elite Score Hub
+      - key: DEBUG
+        value: "false"
