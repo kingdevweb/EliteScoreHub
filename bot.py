@@ -11,8 +11,10 @@ import random
 import json
 import uuid
 import io
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+from aiohttp import web
 
 import aiosqlite
 import httpx
@@ -1081,6 +1083,23 @@ async def cmd_broadcast(message: Message):
     await message.answer(f"✅ Broadcast sent!\n📨 Delivered: {sent}\n❌ Failed: {failed}")
 
 
+# ============ HTTP SERVER (for Render) ============
+async def health_check(request):
+    return web.json_response({"status": "ok", "name": "Elite Score Hub", "version": "2.0.0"})
+
+async def start_http_server():
+    port = int(os.getenv("PORT", "8000"))
+    app = web.Application()
+    app.router.add_get("/", health_check)
+    app.router.add_get("/health", health_check)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    logger.info(f"🌐 HTTP server running on port {port}")
+    return runner
+
+
 # ============ MAIN ============
 async def main():
     await init_db()
@@ -1089,6 +1108,9 @@ async def main():
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
     dp.include_router(router)
+
+    # Start HTTP server for Render (required for Web Service)
+    runner = await start_http_server()
 
     # Schedule daily predictions (runs at 6am Port-au-Prince time = 10:00 UTC)
     scheduler = AsyncIOScheduler()
@@ -1103,4 +1125,7 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Bot stopped.")
