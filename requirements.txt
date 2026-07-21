@@ -1,0 +1,21 @@
+# Elite Score Hub - Core Bot
+# Simple, self-contained Telegram bot with real predictions
+
+# Core
+aiogram==3.13.1
+python-dotenv==1.0.1
+pydantic==2.9.2
+
+# HTTP
+httpx==0.27.2
+aiohttp==3.10.8
+
+# Database (SQLite - no server needed)
+aiosqlite==0.20.0
+
+# Scheduling
+apscheduler==3.10.4
+
+# Date utils
+python-dateutil==2.9.0
+pytz==2024.2
